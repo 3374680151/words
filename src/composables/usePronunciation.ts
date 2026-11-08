@@ -50,7 +50,8 @@ function getAudio(src: string): HTMLAudioElement {
   if (!audio) {
     audio = new Audio()
     audio.preload = 'auto'
-    audio.crossOrigin = 'anonymous'
+    // 注意：不可设置 crossOrigin——有道 dictvoice 不返回 CORS 头，跨_origin 模式会令媒体加载
+    // 失败（MEDIA_ERR_SRC_NOT_SUPPORTED → play() 抛 NotSupportedError），单词将完全无声（对齐原版：播放元素不带跨_origin）
     audio.src = src
     audioCache.set(src, audio)
   }
