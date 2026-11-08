@@ -3,11 +3,13 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import IconX from '~icons/tabler/x'
 import IconInfo from '~icons/ic/outline-info'
+import IconPlus from '~icons/tabler/plus'
 import Layout from '@/components/common/Layout.vue'
 import AppScrollArea from '@/components/ui/AppScrollArea.vue'
 import LanguageTabs from './LanguageTabs.vue'
 import DictGroup from './DictGroup.vue'
 import DictionaryCard from './DictionaryCard.vue'
+import ImportDictWizard from './ImportDictWizard.vue'
 import { dictionaries } from '@/resources/dictionary'
 import groupBy, { groupByDictTags } from '@/utils/groupBy'
 import { useDictStore } from '@/stores/dict'
@@ -17,9 +19,14 @@ import type { Dictionary, LanguageCategoryType } from '@/types'
 
 // 平移自原项目 Gallery-N/index.tsx：语言 Tab（自动定位当前词书语言）→ 分类分组 → tag 药丸 → 词书卡
 // 🆕 P1：搜索框（防抖 300ms，name/description/tags 过滤）
+// 🆕 C1/C2：我的词书分组 + 导入向导入口（自定义词书与内置书共用 DictionaryCard/详情弹窗）
 const router = useRouter()
 const dictStore = useDictStore()
 const ui = useUiStore()
+
+// —— 我的词书（06 规划 C2）——
+const importDialogOpen = ref(false)
+const customDicts = computed(() => dictStore.customDicts)
 
 const currentLanguageTab = ref<LanguageCategoryType>('en')
 // 进入页面自动定位当前词书语言（原行为）
@@ -56,7 +63,7 @@ onUnmounted(() => searchTimer && clearTimeout(searchTimer))
 const searchResults = computed(() => {
   const q = debouncedSearch.value.toLowerCase()
   if (!q) return null
-  return dictionaries.filter(
+  return [...customDicts.value, ...dictionaries].filter(
     (d) =>
       d.name.toLowerCase().includes(q) ||
       d.description.toLowerCase().includes(q) ||
@@ -94,6 +101,31 @@ const searchResults = computed(() => {
 
               <!-- 常规分组 -->
               <template v-else>
+                <!-- 我的词书（C2）：始终展示于最上方，跨语言 Tab 常驻 -->
+                <section class="w-full">
+                  <div class="mb-6 flex items-center justify-between px-1">
+                    <h2 class="text-xl font-bold text-gray-800 dark:text-gray-200">我的词书</h2>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1 rounded-lg border border-indigo-300 px-3 py-1.5 text-sm text-indigo-500 transition-colors hover:bg-indigo-50 dark:border-indigo-700 dark:hover:bg-indigo-900/30"
+                      @click="importDialogOpen = true"
+                    >
+                      <IconPlus class="h-4 w-4" />
+                      导入词书
+                    </button>
+                  </div>
+                  <div v-if="customDicts.length > 0" class="grid w-full gap-x-5 gap-y-10 px-1 pb-4 sm:grid-cols-1 md:grid-cols-2 dic3:grid-cols-3 dic4:grid-cols-4">
+                    <DictionaryCard v-for="dict in customDicts" :key="dict.id" :dictionary="dict" />
+                  </div>
+                  <div
+                    v-else
+                    class="flex h-28 w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 text-gray-400 dark:border-gray-700"
+                  >
+                    <p class="text-sm">还没有自定义词书</p>
+                    <p class="mt-1 text-xs">导入不背单词生词本、Excel 词表或纯单词 txt，即可与内置词书一样练习</p>
+                  </div>
+                </section>
+
                 <DictGroup
                   v-for="[category, groupeByTag] in groupedByCategoryAndTag"
                   :key="category"
@@ -115,5 +147,7 @@ const searchResults = computed(() => {
         </div>
       </div>
     </div>
+    <!-- 导入向导（C1）：三步式，任意步骤可关不落库 -->
+    <ImportDictWizard v-model:open="importDialogOpen" />
   </Layout>
 </template>

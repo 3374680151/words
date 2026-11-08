@@ -43,7 +43,8 @@ export async function importUserDict(name: string, rawWords: Word[]): Promise<IU
     const key = w.name.trim()
     if (!key || seen.has(key.toLowerCase())) continue
     seen.add(key.toLowerCase())
-    words.push({ ...w, name: key })
+    // 逐字段重建：调用方可能传入 Vue reactive Proxy（ref 深层代理），嵌套数组过不了 IDB structured clone
+    words.push({ name: key, trans: Array.from(w.trans ?? []), usphone: w.usphone ?? '', ukphone: w.ukphone ?? '' })
   }
   const now = Math.floor(Date.now() / 1000)
   const dict: IUserDict = {

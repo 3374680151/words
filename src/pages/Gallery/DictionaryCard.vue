@@ -118,7 +118,7 @@ function openDetail(e: Event) {
     <!-- 预览弹窗（受控模式，不用 DialogTrigger） -->
     <AppDialog :open="dialogOpen" content-class="w-[60rem] max-w-none !rounded-[20px] p-0" @update:open="(v: boolean) => (dialogOpen = v)">
       <template #content>
-        <DictDetailDialog v-if="dialogOpen" :dictionary="props.dictionary" />
+        <DictDetailDialog v-if="dialogOpen" :dictionary="props.dictionary" @close="dialogOpen = false" />
       </template>
     </AppDialog>
   </div>

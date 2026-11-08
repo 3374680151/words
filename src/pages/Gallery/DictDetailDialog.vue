@@ -4,24 +4,85 @@ import { useRouter } from 'vue-router'
 import IcOutlineCollectionsBookmark from '~icons/ic/outline-collections-bookmark'
 import MajesticonsPaperFoldTextLine from '~icons/majesticons/paper-fold-text-line'
 import PajamasReviewList from '~icons/pajamas/review-list'
+import IconDownload from '~icons/tabler/download'
+import IconTrash from '~icons/tabler/trash'
 import AppScrollArea from '@/components/ui/AppScrollArea.vue'
+import AppAlertDialog from '@/components/ui/AppAlertDialog.vue'
 import ChapterCard from './ChapterCard.vue'
 import DictErrorTable from './DictErrorTable.vue'
 import ReviewPanel from './ReviewPanel.vue'
 import { useErrorWordData } from './hooks/useGalleryData'
 import { useDictStore } from '@/stores/dict'
 import { useConfigStore } from '@/stores/config'
+import { toastError, toastSuccess } from '@/stores/ui'
 import { deleteWordRecord } from '@/utils/db'
+import { deleteUserDict, getUserDict, isCustomDictId, userDictToCsv, userDictToJson } from '@/utils/db/user-dict'
+import { downloadText } from '@/utils/dict-import'
 import range from '@/utils/range'
 import type { Dictionary } from '@/types'
 
 // 平移自原项目 DictDetail：三 Tab（章节选择/查看错题/错题回顾，后两者仅 errorWords>0 渲染）
 // 修复：选中章判定——原版 `dict.id===currentDictId ? currentChapter : 0` 导致非当前词书误标绿第 1 章
+// 🆕 C2：自定义词书专属操作（导出 CSV/JSON + 删除二次确认，红线 C8/C9）
 const props = defineProps<{ dictionary: Dictionary }>()
 
 const router = useRouter()
 const dictStore = useDictStore()
 const config = useConfigStore()
+
+const isCustomDict = computed(() => isCustomDictId(props.dictionary.id))
+const showExportMenu = ref(false)
+const deleteConfirmOpen = ref(false)
+const deleting = ref(false)
+
+function onExport(format: 'csv' | 'json') {
+  showExportMenu.value = false
+  void (async () => {
+    try {
+      const ud = await getUserDict(props.dictionary.id)
+      if (!ud) {
+        toastError('词书数据读取失败')
+        return
+      }
+      const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      if (format === 'csv') {
+        downloadText(`${ud.name}_${date}.csv`, userDictToCsv(ud))
+      } else {
+        downloadText(`${ud.name}_${date}.json`, userDictToJson(ud), 'application/json')
+      }
+      toastSuccess(`《${ud.name}》已导出`)
+    } catch (e) {
+      console.error('导出词书失败', e)
+      toastError('导出失败，请重试')
+    }
+  })()
+}
+
+async function onConfirmDelete() {
+  if (deleting.value) return
+  deleting.value = true
+  try {
+    await deleteUserDict(props.dictionary.id)
+    // 正在练/正在复习此书 → 回落 cet4（红线 C8）
+    if (dictStore.dictInfo.id === props.dictionary.id) {
+      dictStore.selectDict('cet4')
+    }
+    if (dictStore.isReviewMode && dictStore.reviewRecord?.dict === props.dictionary.id) {
+      dictStore.exitReview()
+    }
+    await dictStore.reloadCustomDicts()
+    toastSuccess(`《${props.dictionary.name}》已删除（练习记录与错题保留）`)
+    deleteConfirmOpen.value = false
+    emit('close')
+  } catch (e) {
+    console.error('删除词书失败', e)
+    toastError('删除失败，请重试')
+  } finally {
+    deleting.value = false
+  }
+}
+
+const emit = defineEmits<{ close: [] }>()
 
 type Tab = 'chapters' | 'errors' | 'review'
 const curTab = ref<Tab>('chapters')
@@ -65,6 +126,38 @@ watch(
       <p class="mt-1">{{ props.dictionary.chapterCount }} 章节</p>
       <p>共 {{ props.dictionary.length }} 词</p>
       <p>{{ props.dictionary.description }}</p>
+
+      <!-- 自定义词书：导出 + 删除（C8/C9） -->
+      <div v-if="isCustomDict" class="absolute right-0 top-0 flex items-center gap-2">
+        <div class="relative">
+          <button
+            type="button"
+            title="导出词书"
+            class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+            @click="showExportMenu = !showExportMenu"
+          >
+            <IconDownload class="h-4 w-4" />
+            导出
+          </button>
+          <div
+            v-if="showExportMenu"
+            class="absolute right-0 top-8 z-10 w-32 overflow-hidden rounded-md border border-gray-100 bg-white py-1 text-sm shadow-lg dark:border-gray-700 dark:bg-gray-800"
+          >
+            <button type="button" class="block w-full px-3 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700" @click="onExport('csv')">导出 CSV</button>
+            <button type="button" class="block w-full px-3 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700" @click="onExport('json')">导出 JSON</button>
+          </div>
+        </div>
+        <button
+          type="button"
+          title="删除词书"
+          class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"
+          @click="deleteConfirmOpen = true"
+        >
+          <IconTrash class="h-4 w-4" />
+          删除
+        </button>
+      </div>
+
       <div class="absolute bottom-5 right-4 flex gap-1">
         <button
           v-for="tab in tabs.filter((t) => t.show)"
@@ -104,5 +197,15 @@ watch(
         <ReviewPanel v-else-if="curTab === 'review'" :error-data="errorWordData" :dict="props.dictionary" />
       </div>
     </div>
+
+    <!-- 删除二次确认（红线 C8：练习记录与错题保留，词书本体不可恢复） -->
+    <AppAlertDialog
+      v-model:open="deleteConfirmOpen"
+      title="删除自定义词书"
+      :description="`将删除《${props.dictionary.name}》词书本体（${props.dictionary.length} 词），此操作不可恢复。练习记录与错题将保留（错题本/统计仍可见）。`"
+      confirm-text="删除"
+      :confirm-loading="deleting"
+      @confirm="onConfirmDelete"
+    />
   </div>
 </template>
