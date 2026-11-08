@@ -183,3 +183,13 @@ export class RevisionWordRecord implements IRevisionWordRecord {
     this.errorCount = errorCount
   }
 }
+
+/** 自定义词书（06 规划 C0）：词表内嵌（≤5000 词，单记录 blob），id 为 `user_` 前缀 */
+export interface IUserDict {
+  id: string
+  name: string
+  description: string
+  words: Word[]
+  createdAt: number
+  updatedAt: number
+}

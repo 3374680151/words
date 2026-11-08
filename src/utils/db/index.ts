@@ -1,4 +1,4 @@
-import type { IChapterRecord, IReviewRecord, IWordRecord, LetterMistakes } from './record'
+import type { IChapterRecord, IReviewRecord, IUserDict, IWordRecord, LetterMistakes } from './record'
 import { ChapterRecord, ReviewRecord, WordRecord } from './record'
 import type { Table } from 'dexie'
 import Dexie from 'dexie'
@@ -11,6 +11,10 @@ class RecordDB extends Dexie {
   wordRecords!: Table<IWordRecord, number>
   chapterRecords!: Table<IChapterRecord, number>
   reviewRecords!: Table<IReviewRecord, number>
+  /** 自定义词书（06 规划 C0）：id 为 `user_` 前缀，与内置词书 id 空间隔离 */
+  userDicts!: Table<IUserDict, string>
+  /** ECDICT 精简反查缓存（懒加载 JSON 后常驻，纯查询加速可随时重建） */
+  ecdictCache!: Table<{ word: string; phonetic: string; translation: string }, string>
 
   constructor() {
     super('RecordDB')
@@ -26,6 +30,14 @@ class RecordDB extends Dexie {
       wordRecords: '++id,word,timeStamp,dict,chapter,wrongCount,[dict+chapter]',
       chapterRecords: '++id,timeStamp,dict,chapter,time,[dict+chapter]',
       reviewRecords: '++id,dict,createTime,isFinished',
+    })
+    // v4：自定义词书 + ECDICT 反查缓存（v1~v3 定义原样保留，老数据无缝）
+    this.version(4).stores({
+      wordRecords: '++id,word,timeStamp,dict,chapter,wrongCount,[dict+chapter]',
+      chapterRecords: '++id,timeStamp,dict,chapter,time,[dict+chapter]',
+      reviewRecords: '++id,dict,createTime,isFinished',
+      userDicts: 'id, createdAt',
+      ecdictCache: 'word',
     })
   }
 }

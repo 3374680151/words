@@ -6,6 +6,7 @@ import { useConfigStore } from '@/stores/config'
 import { useTypingStore } from '@/stores/typing'
 import { useDictStore } from '@/stores/dict'
 import { db, saveWordRecord } from '@/utils/db'
+import { deleteUserDict, ensureEcdictCache, enrichPlainWord, getUserDict, importUserDict, lookupEcdict, userDictToCsv } from '@/utils/db/user-dict'
 import { getLatestReviewRecord, generateNewWordReviewRecord } from '@/utils/db/review-record'
 import { ReviewRecord } from '@/utils/db/record'
 import { generateWordSoundSrc } from '@/composables/usePronunciation'
@@ -214,9 +215,11 @@ async function runAll() {
       { word: 'w3', originData: { name: 'w3', trans: [], usphone: '', ukphone: '' }, errorCount: 3, errorChar: [], errorLetters: {}, latestErrorTime: 300 },
     ]
     const rec = await generateNewWordReviewRecord('cet4', errData)
+    // 原版算法逐字平移：得分 = 0.6×错误数排名 + 0.4×时间排名（升序），错得最多的词得分最高、排最后（原版真实行为）
+    // 手算：w2=1.4 w1=2.2 w3=2.4 → 顺序 [w2, w1, w3]
     add(
-      '复习:0.6/0.4 加权排序（w1 错 5 次最靠前）',
-      rec.words[0]?.name === 'w1' && rec.words[1]?.name === 'w3' && rec.words[2]?.name === 'w2',
+      '复习:0.6/0.4 加权排序（与原版逐字一致：w2,w1,w3）',
+      rec.words[0]?.name === 'w2' && rec.words[1]?.name === 'w1' && rec.words[2]?.name === 'w3',
       rec.words.map((w) => w.name).join(','),
     )
 
@@ -225,9 +228,9 @@ async function runAll() {
     add('复习:exitReview 复位', dict2.isReviewMode === false && config2.currentChapter === -1)
 
     // ========== 六、词表加载（缓存 + 切片 + trans 兜底） ==========
-    const list = await fetchWithCache('/dicts/cet4.json')
-    add('词表:cet4.json 加载 20 词/章', Array.isArray(list) && list.length > 1000, `共 ${list.length} 词`)
-    const listAgain = await fetchWithCache('/dicts/cet4.json')
+    const list = await fetchWithCache('/dicts/CET4_T.json')
+    add('词表:CET4_T.json 加载 20 词/章', Array.isArray(list) && list.length > 1000, `共 ${list.length} 词`)
+    const listAgain = await fetchWithCache('/dicts/CET4_T.json')
     add('词表:同 url 缓存命中（同一 Promise）', list === listAgain)
     const ch1 = list.slice(1 * 20, 2 * 20)
     add('词表:章节切片正确', ch1.length === 20 && ch1[0].name === list[20].name)
@@ -246,6 +249,59 @@ async function runAll() {
     add('发音:uk→type=1 / us→type=2', srcUk.endsWith('&type=1') && srcUs.endsWith('&type=2'))
     add('发音:zh/de 语言参数', srcZh.endsWith('&le=zh') && srcDe.endsWith('&le=de'))
     add('发音:API 前缀正确', srcUk.startsWith('https://dict.youdao.com/dictvoice?audio=test'))
+
+    // ========== 八、自定义词书数据层（06 规划 C0） ==========
+    setActivePinia(createPinia())
+    {
+      const cfg8 = useConfigStore()
+      const dict8 = useDictStore()
+
+      // 导入：去重（大小写合并、空白剔除）+ id 前缀 + 描述（红线 C2）
+      const words8 = [
+        { name: 'hello', trans: ['你好'], usphone: "hə'loʊ", ukphone: "hə'ləʊ" },
+        { name: 'world', trans: ['世界'], usphone: 'wɜːld', ukphone: 'wɜːld' },
+        { name: 'Hello', trans: ['重复词'], usphone: '', ukphone: '' },
+        { name: '   ', trans: ['空白'], usphone: '', ukphone: '' },
+      ]
+      const d1 = await importUserDict('selftest-词书A', words8)
+      add('userDict:导入去重(大小写+空白)', d1.words.length === 2, `n=${d1.words.length}`)
+      add('userDict:id 前缀与描述', d1.id.startsWith('user_') && d1.description.includes('2 词'), d1.id)
+
+      // 重名后缀（红线 C3）
+      const d2 = await importUserDict('selftest-词书A', words8)
+      add('userDict:重名自动 (2) 后缀', d2.name === 'selftest-词书A (2)', d2.name)
+      await deleteUserDict(d2.id)
+
+      // 落库回读 + 章节切分 20/章（红线 C7）
+      const back = await getUserDict(d1.id)
+      add('userDict:落库回读', !!back && back.name === 'selftest-词书A' && back.words.length === 2)
+      const bigWords = Array.from({ length: 45 }, (_, i) => ({ name: `w${i}`, trans: ['t'], usphone: '', ukphone: '' }))
+      const d3 = await importUserDict('selftest-词书B-45词', bigWords)
+      await dict8.reloadCustomDicts()
+      const d3Dict = dict8.allDictsMap[d3.id]
+      add('userDict:章节切分 45词→3章', !!d3Dict && d3Dict.chapterCount === 3, String(d3Dict?.chapterCount))
+
+      // 融合层：dictInfo 解析自定义书；删除后回落 cet4（红线 C8）
+      cfg8.currentDictId = d3.id
+      add('userDict:dictInfo 解析自定义书', dict8.dictInfo.id === d3.id && dict8.dictInfo.category === '我的词书')
+      await deleteUserDict(d3.id)
+      await dict8.reloadCustomDicts()
+      add('userDict:删除后 dictInfo 回落 cet4', dict8.allDictsMap[d3.id] === undefined && dict8.dictInfo.id === 'cet4')
+
+      // ECDICT 反查：命中 / 未收录不抛（红线 C10 降级语义）
+      await ensureEcdictCache()
+      add('ecdict:命中 abandon', (lookupEcdict('abandon')?.translation ?? '').includes('放弃'))
+      const miss = enrichPlainWord('zzzqqq-not-a-word')
+      const hit = enrichPlainWord('abandon')
+      add('ecdict:enrich 未收录→空释义不抛', Array.isArray(miss.trans) && miss.trans.length === 0)
+      add('ecdict:enrich 命中→释义非空', hit.trans.length > 0 && hit.usphone.length > 0, JSON.stringify(hit.trans.slice(0, 1)))
+
+      // 导出 CSV：BOM + 表头 + 引号转义（红线 C9）
+      const csv = userDictToCsv(back!)
+      add('userDict:导出 CSV BOM+表头', csv.charCodeAt(0) === 0xfeff && csv.startsWith('\uFEFFword,trans,usphone,ukphone'))
+      await deleteUserDict(d1.id)
+      await dict8.reloadCustomDicts()
+    }
 
     // ========== 清理测试数据 ==========
     await db.wordRecords.where('word').anyOf(['legacy-test-word', 'vue-test-word']).delete()

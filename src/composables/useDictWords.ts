@@ -1,5 +1,6 @@
 import { ref, computed, watch, onUnmounted, type Ref } from 'vue'
 import { CHAPTER_LENGTH } from '@/constants'
+import { getUserDict, isCustomDictId } from '@/utils/db/user-dict'
 import type { Word, WordWithIndex } from '@/types'
 import { wordListFetcher } from '@/utils/wordListFetcher'
 import { useConfigStore } from '@/stores/config'
@@ -125,6 +126,24 @@ export function useDictWords(): UseDictWordsResult {
       isLoading.value = false
       return
     }
+    // 自定义词书：词表从 IndexedDB userDicts 读取（06 规划 C0；无 url，不走 fetch）
+    if (isCustomDictId(dict.dictInfo.id)) {
+      const seq = ++fetchSeq
+      isLoading.value = true
+      error.value = undefined
+      try {
+        const ud = await getUserDict(dict.dictInfo.id)
+        if (seq === fetchSeq) rawWords.value = ud?.words ?? []
+      } catch (e) {
+        if (seq === fetchSeq) {
+          error.value = e instanceof Error ? e : new Error(String(e))
+          rawWords.value = []
+        }
+      } finally {
+        if (seq === fetchSeq) isLoading.value = false
+      }
+      return
+    }
     const url = dict.dictInfo.url
     const seq = ++fetchSeq
     isLoading.value = true
@@ -145,15 +164,19 @@ export function useDictWords(): UseDictWordsResult {
   }
 
   void load()
-  // 词书切换时重新加载（同一 url 命中缓存）
-  stopFns.push(watch(() => dict.dictInfo.url, () => void load()))
+  // 词书切换时重新加载（监听 id：自定义词书 url 恒为空，监听 url 会导致自定义书间切换不重载）
+  stopFns.push(watch(() => dict.dictInfo.id, () => void load()))
   // 退出复习模式时恢复词表加载
   stopFns.push(watch(() => dict.isReviewMode, () => void load()))
 
   onUnmounted(() => stopFns.forEach((fn) => fn()))
 
   function reload() {
-    // 清缓存后重拉（错误恢复用）
+    // 清缓存后重拉（错误恢复用）；自定义词书直读 IndexedDB
+    if (isCustomDictId(dict.dictInfo.id)) {
+      void load()
+      return
+    }
     wordListCache.delete(dict.dictInfo.url)
     void load()
   }
