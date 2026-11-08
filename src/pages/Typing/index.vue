@@ -37,12 +37,15 @@ watchEffect(() => {
 })
 
 // 词表就绪 → setupChapter（乱序按配置；复习模式从 reviewRecord.index 续打）
+// immediate：复习模式下 words 同步求值（reviewRecord.words，无网络加载），
+// 若在注册前已被消费则 watcher 永不触发 → 面板空白（缺陷 B）；immediate 覆盖两种模式首值。
 watch(
   words,
   (newWords) => {
     if (newWords.length === 0) return
     typing.setupChapter(newWords, config.randomConfig.isOpen, dict.isReviewMode ? (dict.reviewRecord?.index ?? 0) : 0)
   },
+  { immediate: true },
 )
 
 // 加载失败/空数据状态（P0-4）
@@ -165,7 +168,8 @@ onUnmounted(() => window.removeEventListener('resize', onResize))
             <span class="text-sm font-semibold text-indigo-500 hover:underline">{{ dict.dictInfo.name }}{{ dict.isReviewMode ? ' 错题复习' : '' }}</span>
           </RouterLink>
         </AppTooltip>
-        <span class="text-xs text-gray-400">第 {{ config.currentChapter + 1 }} 章</span>
+        <!-- 复习模式隐藏章节徽标（原版 DictChapterButton 复习态隐藏章节下拉） -->
+        <span v-if="!dict.isReviewMode" class="text-xs text-gray-400">第 {{ config.currentChapter + 1 }} 章</span>
 
         <PronunciationSwitcher />
         <Switcher />

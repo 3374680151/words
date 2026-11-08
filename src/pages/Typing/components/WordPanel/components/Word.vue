@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch, computed, onUnmounted } from 'vue'
+import { reactive, ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import Letter, { type LetterState } from './Letter.vue'
 import Notation from './Notation.vue'
 import InputHandler from './InputHandler.vue'
@@ -210,6 +210,14 @@ watch(
 )
 
 // —— effect 6：新词自动发音（含输错清空后再次发音） ——
+// 对齐原版 React 两条触发路径（红线 7）：
+// 1) onMounted：WordPanel :key 含 index，每词重挂载 → 挂载必跑，覆盖「换词/循环重打」（原 useEffect 挂载必跑）
+// 2) watch：首词从暂停启动（isTyping false→true）与输错清空（inputWord N→0）
+onMounted(() => {
+  if (typing.state.isTyping && wordState.inputWord.length === 0) {
+    pronunciationRef.value?.play()
+  }
+})
 watch(
   () => [typing.state.isTyping, wordState.inputWord.length] as const,
   ([isTyping, len]) => {
