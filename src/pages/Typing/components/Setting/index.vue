@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { Dialog, DialogPanel, TransitionChild, TransitionRoot } from '@headlessui/vue'
 import IconX from '~icons/tabler/x'
 import IconEar from '~icons/tabler/ear'
@@ -32,14 +32,24 @@ watch(activeTab, (v) => (ui.lastSettingTab = v))
 
 watch(
   () => props.open,
-  (open) => {
-    if (open) typing.pause() // 原行为：打开设置暂停打字
+  (open, old) => {
+    if (open) {
+      typing.pause() // 原行为：打开设置暂停打字
+      if (!old) ui.dialogMounted('setting-dialog') // P0-H：计入 Dialog 守卫
+    } else if (old) {
+      ui.dialogUnmounted('setting-dialog')
+    }
   },
 )
 
 function close() {
   emit('update:open', false)
 }
+
+// 卸载兜底：开着时组件卸载需释放计数
+onUnmounted(() => {
+  if (props.open) ui.dialogUnmounted('setting-dialog')
+})
 </script>
 
 <template>

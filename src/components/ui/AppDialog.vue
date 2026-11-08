@@ -11,9 +11,13 @@ import {
 } from 'reka-ui'
 import { X } from 'lucide-vue-next'
 import { cn } from '@/utils/ui'
+import { watch, onUnmounted } from 'vue'
+import { useUiStore } from '@/stores/ui'
+
+defineOptions({ inheritAttrs: false })
 
 // 平移自原项目 ui/dialog.tsx：居中内容、zoom+fade+slide 动画、右上 X、persistent 支持点遮罩不关
-withDefaults(
+const props = withDefaults(
   defineProps<{
     open?: boolean
     persistent?: boolean
@@ -25,10 +29,20 @@ withDefaults(
 )
 
 const emit = defineEmits<{ 'update:open': [v: boolean] }>()
-</script>
 
-<script lang="ts">
-export default { inheritAttrs: false }
+// P0-H：Dialog 打开计数接线（修复原项目「Dialog 打开时 Enter/Esc 冒泡误触页面返回」）
+const ui = useUiStore()
+const dialogId = ui.nextDialogId()
+watch(
+  () => props.open,
+  (v, old) => {
+    if (v && !old) ui.dialogMounted(dialogId)
+    else if (!v && old) ui.dialogUnmounted(dialogId)
+  },
+)
+onUnmounted(() => {
+  if (props.open) ui.dialogUnmounted(dialogId)
+})
 </script>
 
 <template>

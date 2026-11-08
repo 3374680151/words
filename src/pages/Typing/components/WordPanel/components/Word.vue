@@ -97,6 +97,10 @@ function updateInput(updateAction: { type: 'add' | 'delete' | 'composition'; val
   if (updateAction.type !== 'add') return
   if (wordState.hasWrong) return // 300ms 吞键窗口
   const value = updateAction.value ?? ''
+  if (value === ' ') {
+    // 空格键输入时阻止浏览器默认行为（页面滚动），原版 Word updateInput 同款（红线 24）
+    updateAction.event?.preventDefault()
+  }
   wordState.inputWord += value === ' ' ? EXPLICIT_SPACE : value
 }
 

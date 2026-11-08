@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import IconX from '~icons/tabler/x'
 import Layout from '@/components/common/Layout.vue'
-import AppSpinner from '@/components/ui/AppSpinner.vue'
 import ActivityCalendar from './components/ActivityCalendar.vue'
 import TrendChart from './components/TrendChart.vue'
 import KeyboardHeatmap from './components/KeyboardHeatmap.vue'
@@ -69,10 +68,19 @@ const chartCards = computed(() => {
     <div class="flex w-full flex-1 flex-col overflow-y-auto pl-20 pr-20 pt-20">
       <IconX class="absolute right-20 top-10 mr-2 h-7 w-7 cursor-pointer text-gray-400" @click="onBack" />
 
-      <!-- 🆕 P0-5：加载骨架 -->
-      <div v-if="isLoading" class="flex flex-col items-center justify-center gap-4 pt-32">
-        <AppSpinner />
-        <p class="text-sm text-gray-400">统计加载中...</p>
+      <!-- 🆕 P0-5：加载骨架（与数据态同构的占位卡，替代原 spinner 文案版） -->
+      <div v-if="isLoading" class="mx-4 my-8 flex flex-col gap-8" aria-busy="true" aria-label="统计加载中">
+        <div
+          v-for="i in 5"
+          :key="i"
+          class="shrink-0 overflow-hidden rounded-lg p-8 shadow-lg dark:bg-gray-700 dark:bg-opacity-50"
+          :class="i <= 2 ? 'h-64' : 'h-80'"
+        >
+          <div class="mb-6 h-5 w-52 animate-pulse rounded bg-gray-200 dark:bg-gray-600" />
+          <div class="flex items-end gap-2" :class="i <= 2 ? 'h-36' : 'h-48'">
+            <div v-for="j in 12" :key="j" class="w-full animate-pulse rounded bg-gray-100 dark:bg-gray-600/70" :style="{ height: `${35 + ((i * 7 + j * 13) % 60)}%`, animationDelay: `${(i * 12 + j * 7) % 90}ms` }" />
+          </div>
+        </div>
       </div>
 
       <!-- 空状态（原行为保留） -->

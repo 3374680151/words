@@ -57,6 +57,13 @@ export const useDictStore = defineStore('dict', () => {
       customDicts.value = (await listUserDicts()).map(toDictionary)
     } catch (e) {
       console.error('加载自定义词书失败', e)
+    } finally {
+      // 红线 16（对齐原版语义）：currentDictId 非法（含自定义书已删）→ 重置 cet4 + 章节归 0 并持久化
+      // （dictInfo computed 只做读取期兜底，不回写；此处补齐原版的回写行为）
+      if (!allDictsMap.value[config.currentDictId]) {
+        config.currentDictId = 'cet4'
+        config.currentChapter = 0
+      }
     }
   }
   void reloadCustomDicts()

@@ -11,6 +11,8 @@ import {
   AlertDialogCancel,
 } from 'reka-ui'
 import { cn } from '@/utils/ui'
+import { watch, onUnmounted } from 'vue'
+import { useUiStore } from '@/stores/ui'
 
 // 删除/覆盖类操作的二次确认（开发规范要求）
 const props = withDefaults(
@@ -27,6 +29,17 @@ const props = withDefaults(
 
 const emit = defineEmits<{ confirm: []; 'update:open': [v: boolean] }>()
 const open = defineModel<boolean>('open', { default: false })
+
+// P0-H：AlertDialog 同样计入 Dialog 打开计数（守卫页面级 Enter/Esc）
+const ui = useUiStore()
+const dialogId = ui.nextDialogId()
+watch(open, (v, old) => {
+  if (v && !old) ui.dialogMounted(dialogId)
+  else if (!v && old) ui.dialogUnmounted(dialogId)
+})
+onUnmounted(() => {
+  if (open.value) ui.dialogUnmounted(dialogId)
+})
 
 function onConfirm() {
   emit('confirm')

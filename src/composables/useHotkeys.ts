@@ -4,6 +4,8 @@ export interface HotkeyOptions {
   /** keydown（默认）或 keyup 触发 */
   keyup?: boolean
   preventDefault?: boolean
+  /** 阻止事件继续冒泡（原版 ResultScreen Space 的 Firefox 修复，红线 22） */
+  stopPropagation?: boolean
   /** 表单元素聚焦时是否仍生效（原 react-hotkeys-hook 语义） */
   enableOnFormTags?: boolean
   /** 是否启用（响应式） */
@@ -50,6 +52,7 @@ export function useHotkeys(keys: string, handler: (e: KeyboardEvent) => void, op
     const hit = comboList.some((combo) => keyMatches(e, combo))
     if (!hit) return
     if (prevent) e.preventDefault()
+    if (options?.stopPropagation) e.stopPropagation()
     handler(e)
   }
 

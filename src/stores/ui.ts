@@ -37,7 +37,13 @@ export const useUiStore = defineStore('ui', () => {
     return activeDialogCount.size > 0
   }
 
-  return { infoPanelState, openInfoPanel, closeInfoPanel, activeDialogCount, dialogMounted, dialogUnmounted, hasOpenDialog, lastSettingTab }
+  // Dialog 实例唯一 id（P0-H 计数守卫用，模块级自增）
+  let dialogSeq = 0
+  function nextDialogId() {
+    return `dialog-${++dialogSeq}`
+  }
+
+  return { infoPanelState, openInfoPanel, closeInfoPanel, activeDialogCount, dialogMounted, dialogUnmounted, hasOpenDialog, nextDialogId, lastSettingTab }
 })
 
 export interface ToastOptions {

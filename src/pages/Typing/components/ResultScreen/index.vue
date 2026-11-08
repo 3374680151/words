@@ -150,7 +150,8 @@ function guard(fn: () => void) {
 }
 
 useHotkeys('enter', () => guard(nextButtonHandler), { preventDefault: true })
-useHotkeys('space', () => guard(repeatButtonHandler), { preventDefault: true })
+// space 加 stopPropagation：Firefox 下 preventDefault 无法阻止滚动等默认行为冒泡（红线 22，原版同款修复）
+useHotkeys('space', () => guard(repeatButtonHandler), { preventDefault: true, stopPropagation: true })
 useHotkeys('shift+enter', () => guard(dictationButtonHandler), { preventDefault: true })
 </script>
 
